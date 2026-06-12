@@ -1,14 +1,18 @@
 const { Jimp } = require('jimp');
 const path = require('path');
+const fs = require('fs');
 
 async function processSprite() {
-  const inputFile = process.argv[2];
-  if (!inputFile) {
-    console.error('Please provide an input image path, e.g., node process_sprite.cjs public/assets/run_cat.png');
+  const actionName = process.argv[2];
+  const inputFile = process.argv[3];
+  
+  if (!actionName || !inputFile) {
+    console.error('Usage: npm run process-sprite <action_name> <input_image>');
+    console.error('Example: npm run process-sprite run public/assets/run_cat.png');
     process.exit(1);
   }
 
-  console.log(`Loading ${inputFile}...`);
+  console.log(`Processing action '${actionName}' from ${inputFile}...`);
   const img = await Jimp.read(inputFile);
   
   const w = img.bitmap.width;
@@ -97,10 +101,37 @@ async function processSprite() {
   });
   
   console.log(`\nFound ${components.length} distinct frames!`);
-  const framesOutput = components.map(c => `{ x: ${c.minX}, y: ${c.minY}, w: ${c.maxX - c.minX}, h: ${c.maxY - c.minY} }`);
+  const framesOutput = components.map(c => ({ x: c.minX, y: c.minY, w: c.maxX - c.minX, h: c.maxY - c.minY }));
   
-  console.log('You can copy the following array into usePetEngine.ts:');
-  console.log(`[\n  ${framesOutput.join(', ')}\n]`);
+  // 3. Update animations.json
+  const configPath = path.join(__dirname, 'src', 'config', 'animations.json');
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+  
+  // Determine URL path relative to public
+  const publicIndex = outputFile.indexOf('public');
+  const publicUrl = publicIndex !== -1 
+    ? outputFile.substring(publicIndex + 'public'.length).replace(/\\/g, '/') 
+    : '/' + path.basename(outputFile);
+
+  if (!config[actionName]) {
+    config[actionName] = {
+      fps: 12, // default
+      speed: 2, // default
+      holdLastFrameMs: 0
+    };
+  }
+  
+  config[actionName].url = publicUrl;
+  config[actionName].framesArray = framesOutput;
+  
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  
+  console.log(`\nSuccessfully updated src/config/animations.json for action: ${actionName}`);
+  console.log(`You can adjust 'fps', 'speed', and 'holdLastFrameMs' manually in animations.json if needed!`);
 }
 
 processSprite().catch(console.error);

@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build && electron-builder",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "process-sprite": "node process_sprite.cjs"
   },
   "dependencies": {
     "framer-motion": "^12.40.0",
