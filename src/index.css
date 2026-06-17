@@ -8,3 +8,24 @@ body {
   overflow: hidden;
   background-color: transparent; /* Essential for transparent Electron window */
 }
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.input {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid rgb(203 213 225);
+  background: white;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: rgb(15 23 42);
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgb(59 130 246);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+}

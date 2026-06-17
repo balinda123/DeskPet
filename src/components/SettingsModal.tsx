@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface SettingsModalProps {
   scale: number;
   setScale: (s: number) => void;
@@ -16,61 +14,53 @@ export function SettingsModal({ scale, setScale, speedScale, setSpeedScale, onCl
   };
 
   return (
-    <div 
-      className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-2xl z-[9999] pointer-events-auto min-w-[300px]"
-      onClick={(e) => e.stopPropagation()}
+    <div
+      className="fixed left-1/2 top-1/2 z-[9999] min-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white/95 p-6 shadow-2xl backdrop-blur-md pointer-events-auto"
+      onClick={(event) => event.stopPropagation()}
+      onMouseEnter={() => window.electronAPI?.setIgnoreMouseEvents(false)}
+      onMouseLeave={() => window.electronAPI?.setIgnoreMouseEvents(true, { forward: true })}
     >
-      <h2 className="text-xl font-bold text-gray-800 mb-6">宠物设置</h2>
-      
+      <h2 className="mb-6 text-xl font-bold text-gray-800">宠物设置</h2>
+
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          小猫大小: {scale.toFixed(1)}x
-        </label>
-        <input 
-          type="range" 
-          min="0.2" 
-          max="2.0" 
-          step="0.1" 
-          value={scale} 
-          onChange={(e) => setScale(parseFloat(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+        <label className="mb-2 block text-sm font-medium text-gray-700">小猫大小：{scale.toFixed(1)}x</label>
+        <input
+          type="range"
+          min="0.2"
+          max="2.0"
+          step="0.1"
+          value={scale}
+          onChange={(event) => setScale(parseFloat(event.target.value))}
+          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
         />
-        <div className="flex justify-between text-xs text-gray-500 mt-1">
+        <div className="mt-1 flex justify-between text-xs text-gray-500">
           <span>小</span>
           <span>大</span>
         </div>
       </div>
 
       <div className="mb-8">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          动作速率: {speedScale.toFixed(1)}x
-        </label>
-        <input 
-          type="range" 
-          min="0.2" 
-          max="3.0" 
-          step="0.1" 
-          value={speedScale} 
-          onChange={(e) => setSpeedScale(parseFloat(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+        <label className="mb-2 block text-sm font-medium text-gray-700">动作速度：{speedScale.toFixed(1)}x</label>
+        <input
+          type="range"
+          min="0.2"
+          max="3.0"
+          step="0.1"
+          value={speedScale}
+          onChange={(event) => setSpeedScale(parseFloat(event.target.value))}
+          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200"
         />
-        <div className="flex justify-between text-xs text-gray-500 mt-1">
+        <div className="mt-1 flex justify-between text-xs text-gray-500">
           <span>慢</span>
           <span>快</span>
         </div>
       </div>
 
       <div className="flex justify-end gap-2">
-        <button 
-          onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
-        >
+        <button onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100">
           取消
         </button>
-        <button 
-          onClick={handleSave}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-xl transition-colors shadow-md shadow-blue-200"
-        >
+        <button onClick={handleSave} className="rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-md shadow-blue-200 hover:bg-blue-600">
           保存设置
         </button>
       </div>

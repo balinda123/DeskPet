@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMotionValue } from 'framer-motion';
+import { BUILTIN_PET_ASSET } from '../config/builtinPetAsset';
+import type { PetActionId, PetAnimation, PetAssetManifest } from '../types/petAsset';
 
 export type PetState = 'walk' | 'run' | 'play' | 'sleep';
 export type Direction = 'left' | 'right';
@@ -12,42 +14,52 @@ interface PetEngineOptions {
   scale?: number;
   speedScale?: number;
   paused?: boolean;
+  asset?: PetAssetManifest;
 }
 
-// Fixed dimensions for the canvas container. We will center and bottom-align the sprites inside this.
-export const FRAME_WIDTH = 450;
-export const FRAME_HEIGHT = 350;
-import ANIMATIONS_CONFIG from '../config/animations.json';
+export const FRAME_WIDTH = 650;
+export const FRAME_HEIGHT = 450;
 
-interface AnimationConfig {
-  url: string;
-  framesArray: {x: number, y: number, w: number, h: number}[];
-  fps: number;
-  speed: number;
-  holdLastFrameMs: number;
-}
+const STATE_TO_ACTION: Record<PetState, PetActionId> = {
+  walk: 'walk',
+  run: 'run',
+  play: 'playBall',
+  sleep: 'sleep',
+};
 
-const ANIMATIONS: Record<PetState, AnimationConfig> = ANIMATIONS_CONFIG as Record<PetState, AnimationConfig>;
-
-export function usePetEngine({ canvasRef, state, direction, setDirection, scale = 1, speedScale = 1, paused = false }: PetEngineOptions) {
+export function usePetEngine({
+  canvasRef,
+  state,
+  direction,
+  setDirection,
+  scale = 1,
+  speedScale = 1,
+  paused = false,
+  asset = BUILTIN_PET_ASSET,
+}: PetEngineOptions) {
   const x = useMotionValue(0);
-  // Store an image cache so we don't load the same image multiple times
   const imageCache = useRef<Record<string, HTMLImageElement>>({});
   const currentImageRef = useRef<HTMLImageElement | null>(null);
+  const action = STATE_TO_ACTION[state];
+  const animation = useMemo(() => resolveAnimation(asset, action), [asset, action]);
+  const frameWidth = asset.baseFrame.width;
+  const frameHeight = asset.baseFrame.height;
 
   useEffect(() => {
-    const url = ANIMATIONS[state].url;
+    const url = animation.spriteUrl;
+    currentImageRef.current = null;
     if (imageCache.current[url]) {
       currentImageRef.current = imageCache.current[url];
-    } else {
-      const img = new Image();
-      img.src = url;
-      img.onload = () => {
-        imageCache.current[url] = img;
-        currentImageRef.current = img;
-      };
+      return;
     }
-  }, [state]);
+
+    const image = new Image();
+    image.onload = () => {
+      imageCache.current[url] = image;
+      currentImageRef.current = image;
+    };
+    image.src = url;
+  }, [animation.spriteUrl]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -56,88 +68,143 @@ export function usePetEngine({ canvasRef, state, direction, setDirection, scale 
     if (!ctx) return;
 
     let animationFrameId: number;
-    let lastDrawTime = 0;
+    let lastTime = 0;
+    let frameAccumulator = 0;
     let currentFrame = 0;
 
     const render = (time: number) => {
       animationFrameId = requestAnimationFrame(render);
       if (!currentImageRef.current) return;
 
-      const animConfig = ANIMATIONS[state];
-      const framesCount = animConfig.framesArray.length;
-      const { fps, speed, holdLastFrameMs } = animConfig;
-      
-      // Apply speed scale to FPS
-      const actualFps = fps * speedScale;
-      let frameDuration = 1000 / actualFps;
+      const deltaMs = lastTime === 0 ? 0 : Math.min(time - lastTime, 80);
+      lastTime = time;
 
-      // Check if we are holding the last frame
-      const isHolding = currentFrame === framesCount - 1 && holdLastFrameMs > 0;
-      if (isHolding) {
-        frameDuration = holdLastFrameMs;
-      }
+      const framesCount = animation.frames.length;
+      const frameDuration = 1000 / Math.max(1, animation.fps * speedScale);
 
-      if (time - lastDrawTime > frameDuration) {
-        currentFrame = (currentFrame + 1) % framesCount;
-        lastDrawTime = time;
-      }
-
-      // If paused or holding the sit frame, don't update translation
-      if (speed > 0 && !paused && !isHolding) {
-        const currentX = x.get();
-        const screenWidth = window.innerWidth;
-        
-        // Apply speed scale to movement speed
-        const actualSpeed = speed * speedScale;
-        const delta = direction === 'right' ? actualSpeed : -actualSpeed;
-        let nextX = currentX + delta;
-        
-        // Display size considering scale
-        const displayWidth = FRAME_WIDTH * scale;
-        
-        const rightBound = screenWidth / 2 - displayWidth / 2;
-        const leftBound = -screenWidth / 2 + displayWidth / 2;
-
-        if (nextX > rightBound) {
-            nextX = rightBound;
-            setDirection('left');
-        } else if (nextX < leftBound) {
-            nextX = leftBound;
-            setDirection('right');
+      if (!paused && framesCount > 1) {
+        frameAccumulator += deltaMs;
+        while (frameAccumulator >= frameDuration) {
+          const nextFrame = currentFrame + 1;
+          currentFrame = animation.loop ? nextFrame % framesCount : Math.min(nextFrame, framesCount - 1);
+          frameAccumulator -= frameDuration;
         }
-        x.set(nextX);
       }
 
-      ctx.clearRect(0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-      ctx.save();
-      
-      if (direction === 'left') {
-        ctx.translate(FRAME_WIDTH, 0);
-        ctx.scale(-1, 1);
-      }
+      movePet({
+        deltaMs,
+        direction,
+        frameWidth,
+        paused,
+        scale,
+        setDirection,
+        speed: animation.locomotionSpeedPxPerSecond,
+        speedScale,
+        x,
+      });
 
-      const f = animConfig.framesArray[currentFrame];
-      if (f) {
-        // Bottom-center alignment so it looks like it's walking on the floor
-        const dx = (FRAME_WIDTH - f.w) / 2;
-        const dy = FRAME_HEIGHT - f.h; // Bottom align
-
-        ctx.drawImage(
-          currentImageRef.current,
-          f.x, f.y, f.w, f.h, // Source
-          dx, dy, f.w, f.h    // Destination
-        );
-      }
-
-      ctx.restore();
+      drawPetFrame({
+        asset,
+        ctx,
+        direction,
+        frame: animation.frames[currentFrame],
+        frameHeight,
+        frameWidth,
+        image: currentImageRef.current,
+      });
     };
 
     animationFrameId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [animation, asset, canvasRef, direction, frameHeight, frameWidth, paused, scale, setDirection, speedScale, x]);
 
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [canvasRef, state, direction, setDirection, x, scale, speedScale, paused]);
+  return { x, frameWidth, frameHeight };
+}
 
-  return { x };
+function movePet({
+  deltaMs,
+  direction,
+  frameWidth,
+  paused,
+  scale,
+  setDirection,
+  speed,
+  speedScale,
+  x,
+}: {
+  deltaMs: number;
+  direction: Direction;
+  frameWidth: number;
+  paused: boolean;
+  scale: number;
+  setDirection: (dir: Direction) => void;
+  speed: number;
+  speedScale: number;
+  x: ReturnType<typeof useMotionValue<number>>;
+}) {
+  if (speed <= 0 || paused || deltaMs <= 0) return;
+
+  const actualSpeed = speed * speedScale;
+  const delta = (direction === 'right' ? actualSpeed : -actualSpeed) * (deltaMs / 1000);
+  let nextX = x.get() + delta;
+  const displayWidth = frameWidth * scale;
+  const rightBound = window.innerWidth / 2 - displayWidth / 2;
+  const leftBound = -window.innerWidth / 2 + displayWidth / 2;
+
+  if (nextX > rightBound) {
+    nextX = rightBound;
+    setDirection('left');
+  } else if (nextX < leftBound) {
+    nextX = leftBound;
+    setDirection('right');
+  }
+  x.set(nextX);
+}
+
+function drawPetFrame({
+  asset,
+  ctx,
+  direction,
+  frame,
+  frameHeight,
+  frameWidth,
+  image,
+}: {
+  asset: PetAssetManifest;
+  ctx: CanvasRenderingContext2D;
+  direction: Direction;
+  frame: PetAnimation['frames'][number] | undefined;
+  frameHeight: number;
+  frameWidth: number;
+  image: HTMLImageElement;
+}) {
+  ctx.clearRect(0, 0, frameWidth, frameHeight);
+  if (!frame) return;
+
+  ctx.save();
+  if (direction === 'left') {
+    ctx.translate(frameWidth, 0);
+    ctx.scale(-1, 1);
+  }
+
+  ctx.drawImage(
+    image,
+    frame.x,
+    frame.y,
+    frame.w,
+    frame.h,
+    frameWidth / 2 - frame.anchorX,
+    asset.baseFrame.floorY - frame.anchorY,
+    frame.w,
+    frame.h,
+  );
+  ctx.restore();
+}
+
+function resolveAnimation(asset: PetAssetManifest, action: PetActionId): PetAnimation {
+  const preferred = asset.actions[action];
+  const fallback = asset.actions.walk ?? BUILTIN_PET_ASSET.actions.walk;
+  if (preferred) return preferred;
+  if (fallback) return fallback;
+  throw new Error('Pet asset is missing a playable walk animation.');
 }
